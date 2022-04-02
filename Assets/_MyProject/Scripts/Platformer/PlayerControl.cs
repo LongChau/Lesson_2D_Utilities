@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class PlayerControl : MonoBehaviour
 {
@@ -12,18 +13,35 @@ public class PlayerControl : MonoBehaviour
     public bool isOnGround;
     public Vector2 direction;
     public float groundCheckLength = 0.03f;
+    public float jumpForce = 4f;
+    public float speed = 5f;
+    public Vector2 oldVelo;
+    public float timeCheckOldVelo;
     //public float stairLength = 0.03f;
 
     // Start is called before the first frame update
     void Start()
     {
-        
+        //GameManager.Instance.HelloWorld();
+        timeCheckOldVelo = 0f;
+    }
+
+    [ContextMenu("CallGameManager")]
+    void CallGameManager()
+    {
+        GameManager.Instance.HelloWorld();
     }
 
     // Update is called once per frame
     void Update()
     {
         CheckOnGround();
+
+        if (Time.time > timeCheckOldVelo)
+        {
+            timeCheckOldVelo = Time.time + 1 / 10;
+            oldVelo = rigid.velocity;
+        }
 
         var velo = rigid.velocity;
         velo.x = 0f;
@@ -40,7 +58,7 @@ public class PlayerControl : MonoBehaviour
             {
                 direction = Vector2.right;
             }
-            transform.Translate(direction * 5f * Time.deltaTime);
+            transform.Translate(direction * speed * Time.deltaTime);
 
             // Cách 2:
             //Vector2 dir;
@@ -58,7 +76,7 @@ public class PlayerControl : MonoBehaviour
             {
                 direction = Vector2.left;
             }
-            transform.Translate(direction * 5f * Time.deltaTime);
+            transform.Translate(direction * speed * Time.deltaTime);
 
             // Cách 2:
             //Vector2 dir;
@@ -69,7 +87,7 @@ public class PlayerControl : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Space) && isOnGround)
         {
-            rigid.AddForce(Vector2.up * 4f, ForceMode2D.Impulse);
+            rigid.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
         }
 
     }
@@ -89,7 +107,47 @@ public class PlayerControl : MonoBehaviour
         {
             groundObj = null;
             isOnGround = false;
-            rigid.gravityScale = 1f;
+            if (!isWallTop)
+                rigid.gravityScale = 1f;
+        }
+    }
+
+    bool isWallTop;
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        if (collision.CompareTag("WallTop"))
+        {
+            if (!isOnGround && oldVelo.y > rigid.velocity.y)
+            {
+                Debug.Log("Hit Wall top");
+                isWallTop = true;
+                rigid.gravityScale = 0;
+                var velo = rigid.velocity;
+                velo.y = 0f;
+                rigid.velocity = velo;
+                StartCoroutine(IEClimpTopWall());
+            }
+        }
+    }
+    public float timeClimpTopWall = 1f;
+    IEnumerator IEClimpTopWall()
+    {
+        var time = timeClimpTopWall;
+        while (time > 0f)
+        {
+            time -= Time.deltaTime;
+            transform.Translate((transform.up + -transform.right) * speed * Time.deltaTime);
+            yield return null;
+        }
+    }
+
+    private void OnTriggerExit2D(Collider2D collision)
+    {
+        if (collision.CompareTag("WallTop"))
+        {
+            Debug.Log("Leave Wall top");
+            isWallTop = false;
+            rigid.gravityScale = 1;
         }
     }
 
@@ -111,4 +169,10 @@ public class PlayerControl : MonoBehaviour
     //        rigid.gravityScale = 1f;
     //    }
     //}
+
+    [ContextMenu("ChangeScene")]
+    private void ChangeScene()
+    {
+        SceneManager.LoadSceneAsync(0);
+    }
 }
