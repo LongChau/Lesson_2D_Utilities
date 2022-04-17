@@ -6,18 +6,27 @@ using UnityEngine.SceneManagement;
 
 public class PlayerControl : MonoBehaviour
 {
+    public Vector2 offset;
     public GameObject stairCheck;
     public GameObject groundCheck;
     public Rigidbody2D rigid;
-    public LayerMask mask;
+    public LayerMask groundMask;
     public bool isOnGround;
     public Vector2 direction;
     public float groundCheckLength = 0.03f;
+    public float stairCheckLength = 0.03f;
     public float jumpForce = 4f;
     public float speed = 5f;
     public Vector2 oldVelo;
     public float timeCheckOldVelo;
     //public float stairLength = 0.03f;
+
+    public bool isStartJump;
+    public bool isInAir;
+    public bool isFallingDown;
+
+    public EPlayerState playerState;
+    public EJumpState jumpState;
 
     // Start is called before the first frame update
     void Start()
@@ -36,17 +45,16 @@ public class PlayerControl : MonoBehaviour
     void Update()
     {
         CheckOnGround();
+        //CheckOnStair();
 
-        if (Time.time > timeCheckOldVelo)
-        {
-            timeCheckOldVelo = Time.time + 1 / 10;
-            oldVelo = rigid.velocity;
-        }
+        CheckVelocity();
+        UpdateInput();
+        UpdatePlayerState();
+        UpdateJumpState();
+    }
 
-        var velo = rigid.velocity;
-        velo.x = 0f;
-        rigid.velocity = velo;
-
+    private void UpdateInput()
+    {
         if (Input.GetKey(KeyCode.RightArrow))
         {
             // Cách 1:
@@ -58,13 +66,10 @@ public class PlayerControl : MonoBehaviour
             {
                 direction = Vector2.right;
             }
+            var scale = transform.localScale;
+            scale.x = 1f;
+            transform.localScale = scale;
             transform.Translate(direction * speed * Time.deltaTime);
-
-            // Cách 2:
-            //Vector2 dir;
-            //dir = groundObj.transform.position - transform.position;
-            //direction = Vector3.ProjectOnPlane(dir.normalized, groundObj.transform.up);
-            //transform.Translate(direction * 5f * Time.deltaTime);
         }
         else if (Input.GetKey(KeyCode.LeftArrow))
         {
@@ -76,32 +81,126 @@ public class PlayerControl : MonoBehaviour
             {
                 direction = Vector2.left;
             }
+            var scale = transform.localScale;
+            scale.x = -1f;
+            transform.localScale = scale;
             transform.Translate(direction * speed * Time.deltaTime);
-
-            // Cách 2:
-            //Vector2 dir;
-            //dir = groundObj.transform.position - transform.position;
-            //direction = Vector3.ProjectOnPlane(dir.normalized, groundObj.transform.up);
-            //transform.Translate(direction * 5f * Time.deltaTime);
+        }
+        else
+        {
+            playerState = EPlayerState.Idle;
         }
 
         if (Input.GetKeyDown(KeyCode.Space) && isOnGround)
         {
-            rigid.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+            jumpState = EJumpState.StartJump;
         }
+    }
 
+    private void UpdateJumpState()
+    {
+        switch (jumpState)
+        {
+            case EJumpState.StartJump:
+                rigid.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+                jumpState = EJumpState.InAir;
+                break;
+            case EJumpState.InAir:
+                if (rigid.velocity.y < 0)
+                {
+                    jumpState = EJumpState.Falling;
+                }
+                break;
+            case EJumpState.Falling:
+
+                break;
+        }
+    }
+
+    private void UpdatePlayerState()
+    {
+        switch (playerState)
+        {
+            case EPlayerState.Idle:
+
+                break;
+            case EPlayerState.Walking:
+                break;
+        }
+    }
+
+    private void CheckVelocity()
+    {
+        var velo = rigid.velocity;
+        velo.x = 0f;
+        rigid.velocity = velo;
+
+        //if (rigid.velocity.y > 0)
+        //{
+        //    jumpState = EJumpState.InAir;
+        //}
+        //else if (rigid.velocity.y < 0)
+        //{
+        //    jumpState = EJumpState.Falling;
+        //}
+    }
+
+    RaycastHit2D hitGround;
+    RaycastHit2D hitStair;
+    private void CheckOnStair()
+    {
+        hitStair = Physics2D.Raycast(stairCheck.transform.position, Vector2.down, stairCheckLength, groundMask);
+        Debug.DrawRay(stairCheck.transform.position, Vector2.down * stairCheckLength, Color.blue);
+        if (hitStair.collider != null)
+        {
+            if (isStartJump) return;
+            isOnGround = true;
+            groundObj = hitStair.collider.gameObject;
+
+            var velo = rigid.velocity;
+            velo.y = 0f;
+            rigid.velocity = velo;
+
+            if (hitStair.collider.CompareTag("Stair"))
+            {
+                if (Vector2.Distance(stairCheck.transform.position, hitStair.point) <= 0.001f)
+                {
+
+                    // Snap to ground.
+                    Vector2 pos = transform.position;
+                    pos.y = hitGround.point.y;
+                    transform.position = pos + offset;
+
+                    isFallingDown = false;
+                    isInAir = false;
+                }
+            }
+        }
     }
 
     GameObject groundObj;
     private void CheckOnGround()
     {
-        var hit = Physics2D.Raycast(groundCheck.transform.position, Vector2.down, groundCheckLength, mask);
+        hitGround = Physics2D.Raycast(groundCheck.transform.position, Vector2.down, groundCheckLength, groundMask);
         Debug.DrawRay(groundCheck.transform.position, Vector2.down * groundCheckLength, Color.red);
-        if (hit.collider != null && hit.collider.CompareTag("Ground"))
+        if (hitGround.collider != null)
         {
+            groundObj = hitGround.collider.gameObject;
+
             isOnGround = true;
-            rigid.gravityScale = 0f;
-            groundObj = hit.collider.gameObject;
+
+            var distance = Vector2.Distance(groundCheck.transform.position, hitGround.point);
+            if (distance <= 0.2f)
+            {
+                // Snap to ground.
+                if (hitGround.collider.CompareTag("Stair"))
+                {
+                    Vector2 pos = transform.position;
+                    pos.y = hitGround.point.y;
+                    transform.position = pos + offset;
+                }
+                // TODO: Allow to jump here;
+            }
         }
         else
         {
@@ -151,28 +250,17 @@ public class PlayerControl : MonoBehaviour
         }
     }
 
-    //GameObject stairObj;
-    //private void CheckOnStair()
-    //{
-    //    var hit = Physics2D.Raycast(stairCheck.transform.position, Vector2.right, stairLength, mask);
-    //    Debug.DrawRay(stairCheck.transform.position, Vector2.down * stairLength, Color.red);
-    //    if (hit.collider != null && hit.collider.CompareTag("Stair"))
-    //    {
-    //        isOnGround = true;
-    //        rigid.gravityScale = 0f;
-    //        stairObj = hit.collider.gameObject;
-    //    }
-    //    else
-    //    {
-    //        stairObj = null;
-    //        isOnGround = false;
-    //        rigid.gravityScale = 1f;
-    //    }
-    //}
-
-    [ContextMenu("ChangeScene")]
-    private void ChangeScene()
+    public enum EPlayerState
     {
-        SceneManager.LoadSceneAsync(0);
+        Idle, 
+        Walking,
+    }
+
+    public enum EJumpState
+    {
+        None = 0,
+        StartJump = 1,
+        InAir = 2,
+        Falling = 3
     }
 }
